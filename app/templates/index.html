@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disease Prediction System</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- We no longer use Jinja url_for. We link directly to the /static route we mounted! -->
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
@@ -16,36 +17,117 @@
     </header>
 
     <div class="card">
-        <form action="/predict" method="POST">
-            {% for i in range(1, 6) %}
-            <div class="form-group">
-                <label for="symptom{{ i }}">Symptom {{ i }}:</label>
-                <select name="symptom{{ i }}" id="symptom{{ i }}">
-                    <option value="">-- Select a Symptom --</option>
-                    
-                    {% for sym in symptoms %}
-                    <!-- If the symptom matches the one saved in user_choices, mark it as 'selected' -->
-                    <option value="{{ sym }}" {% if user_choices and user_choices[i] == sym %}selected{% endif %}>
-                        {{ sym.replace('_', ' ').title() }}
-                    </option>
-                    {% endfor %}
-                    
-                </select>
+        <!-- We removed the action="/predict" because Javascript handles it now -->
+        <form id="prediction-form">
+            
+            <!-- We create an empty container for Javascript to inject the dropdowns into -->
+            <div id="dropdown-container">
+                <!-- Dropdowns will appear here automatically when the page loads -->
             </div>
-            {% endfor %}
 
             <button type="submit" class="btn-submit">Analyze Symptoms</button>
         </form>
 
-        {% if prediction_text %}
-        <div class="result-box">
+        <!-- Hidden result box that Javascript will reveal when we get a prediction -->
+        <div id="result-container" class="result-box" style="display: none; margin-top: 20px;">
             <h3>Predicted Diagnosis:</h3>
-            <p class="diagnosis">{{ prediction_text.split(': ')[1] if ': ' in prediction_text else prediction_text }}</p>
+            <p id="prediction-text" class="diagnosis"></p>
         </div>
-        {% endif %}
     </div>
 
 </div>
+
+<!-- ========================================== -->
+<!-- 🚀 JAVASCRIPT: THE NEW "FRONTEND ENGINE" -->
+<!-- ========================================== -->
+<script>
+    // 1. When the page loads, fetch the symptoms from our API!
+    document.addEventListener("DOMContentLoaded", function() {
+        fetch('/api/v1/symptoms')
+            .then(response => response.json())
+            .then(data => {
+                const symptoms = data.symptoms;
+                const container = document.getElementById("dropdown-container");
+                
+                // Create exactly 5 dropdowns dynamically
+                for (let i = 1; i <= 5; i++) {
+                    let group = document.createElement("div");
+                    group.className = "form-group";
+                    
+                    let label = document.createElement("label");
+                    label.innerText = `Symptom ${i}:`;
+                    
+                    let select = document.createElement("select");
+                    select.id = `symptom${i}`;
+                    
+                    // Add default option
+                    let defaultOption = document.createElement("option");
+                    defaultOption.value = "";
+                    defaultOption.innerText = "-- Select a Symptom --";
+                    select.appendChild(defaultOption);
+                    
+                    // Add all symptoms from the API
+                    symptoms.forEach(sym => {
+                        let option = document.createElement("option");
+                        option.value = sym;
+                        // Format text beautifully (e.g. skin_rash -> Skin Rash)
+                        option.innerText = sym.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        select.appendChild(option);
+                    });
+                    
+                    group.appendChild(label);
+                    group.appendChild(select);
+                    container.appendChild(group);
+                }
+            })
+            .catch(error => console.error("Error loading symptoms:", error));
+    });
+
+    // 2. When the user clicks the Submit button, intercept it and send JSON!
+    document.getElementById("prediction-form").addEventListener("submit", function(event) {
+        event.preventDefault(); // Stop the page from refreshing like old 1990s websites
+        
+        let selectedSymptoms = [];
+        
+        // Grab whatever the user selected from all 5 dropdowns
+        for (let i = 1; i <= 5; i++) {
+            let val = document.getElementById(`symptom${i}`).value;
+            if (val !== "") {
+                selectedSymptoms.push(val);
+            }
+        }
+        
+        if (selectedSymptoms.length === 0) {
+            alert("Please select at least one symptom.");
+            return;
+        }
+
+        // Send JSON payload to our FastAPI endpoint
+        fetch('/api/v1/predict', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ "symptoms": selectedSymptoms })
+        })
+        .then(response => response.json())
+        .then(data => {
+            let resultContainer = document.getElementById("result-container");
+            let predictionText = document.getElementById("prediction-text");
+            
+            resultContainer.style.display = "block"; // Unhide the box
+            
+            if (data.status === "success") {
+                predictionText.innerText = data.prediction;
+                predictionText.style.color = ""; // <--- Let the CSS handle the glowing green color!
+            } else {
+                predictionText.innerText = "Error: " + (data.detail || data.error);
+                predictionText.style.color = "#ef4444"; // Red for errors
+            }
+        })
+        .catch(error => console.error("Error making prediction:", error));
+    });
+</script>
 
 </body>
 </html>
