@@ -49,6 +49,22 @@
                 const symptoms = data.symptoms;
                 const container = document.getElementById("dropdown-container");
                 
+                // Function to prevent duplicate symptom selection
+                function updateDropdownOptions() {
+                    let selected = [];
+                    for (let j = 1; j <= 5; j++) {
+                        let val = document.getElementById(`symptom${j}`).value;
+                        if (val !== "") selected.push(val);
+                    }
+                    for (let j = 1; j <= 5; j++) {
+                        let select = document.getElementById(`symptom${j}`);
+                        Array.from(select.options).forEach(opt => {
+                            if (opt.value === "") return; // Leave default option alone
+                            opt.disabled = selected.includes(opt.value) && opt.value !== select.value;
+                        });
+                    }
+                }
+
                 // Create exactly 5 dropdowns dynamically
                 for (let i = 1; i <= 5; i++) {
                     let group = document.createElement("div");
@@ -59,6 +75,7 @@
                     
                     let select = document.createElement("select");
                     select.id = `symptom${i}`;
+                    select.addEventListener("change", updateDropdownOptions); // Apply duplicate prevention
                     
                     // Add default option
                     let defaultOption = document.createElement("option");
@@ -102,6 +119,14 @@
             return;
         }
 
+        // Prevent spam clicking by disabling the button and changing text
+        let submitBtn = document.querySelector(".btn-submit");
+        let originalBtnText = submitBtn.innerText;
+        submitBtn.disabled = true;
+        submitBtn.innerText = "Analyzing...";
+        submitBtn.style.opacity = "0.7";
+        submitBtn.style.cursor = "not-allowed";
+
         // Send JSON payload to our FastAPI endpoint
         fetch('/api/v1/predict', {
             method: 'POST',
@@ -125,7 +150,14 @@
                 predictionText.style.color = "#ef4444"; // Red for errors
             }
         })
-        .catch(error => console.error("Error making prediction:", error));
+        .catch(error => console.error("Error making prediction:", error))
+        .finally(() => {
+            // Restore the button to normal once the request finishes
+            submitBtn.disabled = false;
+            submitBtn.innerText = originalBtnText;
+            submitBtn.style.opacity = "1";
+            submitBtn.style.cursor = "pointer";
+        });
     });
 </script>
 
